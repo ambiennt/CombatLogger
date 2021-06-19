@@ -9,14 +9,8 @@
 #include <Actor/Actor.h>
 #include <Actor/ActorDamageSource.h>
 #include <Actor/Player.h>
-#include <Packet/TransferPacket.h>
 #include <Packet/TextPacket.h>
-#include <Core/ServerInstance.h>
 #include <Net/ServerNetworkHandler.h>
-#include <Core/MCRESULT.h>
-#include <Core/json.h>
-#include <SQLiteCpp/SQLiteCpp.h>
-#include <sqlite3.h>
 #include <boost/scope_exit.hpp>
 #include <boost/format.hpp>
 #include <boost/algorithm/string.hpp>
@@ -25,7 +19,7 @@ struct Settings {
   bool operatorsCanBeInCombat = true;
   int combatTime = 30;
   bool combatTimeMessageEnabled = true;
-  std::string initiatedCombatMessage = "You are now in combat. Wait 30 seconds to log out!";
+  std::string initiatedCombatMessage = "You are now in combat. Do not log out!";
   std::string inCombatDurationMessage = "You are in combat for %time% more seconds!";
   std::string endedCombatMessage = "You are no longer in combat.";
   std::string logoutWhileInCombatMessage = "%name% logged out while in combat!";
@@ -55,4 +49,3 @@ struct Combat {
 extern Settings settings;
 
 extern std::unordered_map<uint64_t, Combat> inCombat;
-

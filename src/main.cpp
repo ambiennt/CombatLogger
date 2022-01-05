@@ -31,8 +31,8 @@ void PreInit() {
 			});
 
 			auto* gr = &LocateService<Level>()->getGameRules();
-    		GameRulesIndex keepInventoryId = GameRulesIndex::KeepInventory;
-    		bool isKeepInventory = CallServerClassMethod<bool>("?getBool@GameRules@@QEBA_NUGameRuleId@@@Z", gr, &keepInventoryId);
+			GameRulesIndex keepInventoryId = GameRulesIndex::KeepInventory;
+			bool isKeepInventory = CallServerClassMethod<bool>("?getBool@GameRules@@QEBA_NUGameRuleId@@@Z", gr, &keepInventoryId);
 
 			if (entry.player->isPlayerInitialized() && !isKeepInventory) {
 
@@ -43,124 +43,124 @@ void PreInit() {
 				const auto region = entry.player->mRegion;
 
 				if (settings.setChestGravestoneOnLog) {
-        			newPos.y -= 1.62f;
+					newPos.y -= 1.62f;
 
-        			int dimId = entry.player->mDimensionId;
-        			switch ((DimensionIds) dimId) {
-        				
-            			case DimensionIds::Overworld: {   
-                    		const auto& generator = LocateService<Level>()->GetLevelDataWrapper()->getWorldGenerator();
-                    		float lowerBounds = (generator == GeneratorType::Flat ? 1.0f : 5.0f);
-                    
-                    		if (newPos.y > 255.0f) newPos.y = 255.0f;
-                    		else if (newPos.y < lowerBounds) newPos.y = lowerBounds;
-                    		break;
-                		}
+					int dimId = entry.player->mDimensionId;
+					switch ((DimensionIds) dimId) {
 
-            			case DimensionIds::Nether: {   
-                    		if (newPos.y > 122.0f) newPos.y = 122.0f;
-                    		else if (newPos.y < 5.0f) newPos.y = 5.0f;
-                    		break;
-                		}
+						case DimensionIds::Overworld: {
+							const auto& generator = LocateService<Level>()->GetLevelDataWrapper()->getWorldGenerator();
+							float lowerBounds = (generator == GeneratorType::Flat ? 1.0f : 5.0f);
 
-            			case DimensionIds::TheEnd: {   
-                    		if (newPos.y > 255.0f) newPos.y = 255.0f;
-                    		else if (newPos.y < 0.0f) newPos.y = 0.0f;
-                    		break;
-                		}
+							if (newPos.y > 255.0f) newPos.y = 255.0f;
+							else if (newPos.y < lowerBounds) newPos.y = lowerBounds;
+							break;
+						}
 
-            			default: break;
-        			}
+						case DimensionIds::Nether: {
+							if (newPos.y > 122.0f) newPos.y = 122.0f;
+							else if (newPos.y < 5.0f) newPos.y = 5.0f;
+							break;
+						}
 
-        			BlockPos bp;
-        			auto normalizedChestPos_1 = bp.getBlockPos(newPos);
-        			region->setBlock(normalizedChestPos_1, *VanillaBlocks::mChest, 3, nullptr);
-        			newPos.x += 1.0f;
-        			auto normalizedChestPos_2 = bp.getBlockPos(newPos);
-        			region->setBlock(normalizedChestPos_2, *VanillaBlocks::mChest, 3, nullptr);
+						case DimensionIds::TheEnd: {
+							if (newPos.y > 255.0f) newPos.y = 255.0f;
+							else if (newPos.y < 0.0f) newPos.y = 0.0f;
+							break;
+						}
 
-        			auto chestBlock_1 = region->getBlockEntity(normalizedChestPos_1);
-        			auto chestBlock_2 = region->getBlockEntity(normalizedChestPos_2);
-        			auto chestContainer = chestBlock_1->getContainer();
+						default: break;
+					}
 
-        			const int playerArmorSlots = 4;
-        			for (int i = 0; i < playerArmorSlots; i++) {
-            			auto armorItem = entry.player->getArmor((ArmorSlot) i);
-            			chestContainer->addItemToFirstEmptySlot(armorItem);
-            			entry.player->setArmor((ArmorSlot) i, ItemStack::EMPTY_ITEM);
-        			}
+					BlockPos bp;
+					auto normalizedChestPos_1 = bp.getBlockPos(newPos);
+					region->setBlock(normalizedChestPos_1, *VanillaBlocks::mChest, 3, nullptr);
+					newPos.x += 1.0f;
+					auto normalizedChestPos_2 = bp.getBlockPos(newPos);
+					region->setBlock(normalizedChestPos_2, *VanillaBlocks::mChest, 3, nullptr);
 
-        			auto offhandItem = entry.player->getOffhandSlot();
-        			chestContainer->addItemToFirstEmptySlot(*offhandItem);
-        			entry.player->setOffhandSlot(ItemStack::EMPTY_ITEM);
+					auto chestBlock_1 = region->getBlockEntity(normalizedChestPos_1);
+					auto chestBlock_2 = region->getBlockEntity(normalizedChestPos_2);
+					auto chestContainer = chestBlock_1->getContainer();
 
-        			int playerInventorySlots = playerInventory->getContainerSize();
-        			for (int i = 0; i < playerInventorySlots; i++) {
-            			auto inventoryItem = playerInventory->getItem(i);
-            			chestContainer->addItemToFirstEmptySlot(inventoryItem);
-            			playerInventory->setItem(i, ItemStack::EMPTY_ITEM);
-        			}
+					const int playerArmorSlots = 4;
+					for (int i = 0; i < playerArmorSlots; i++) {
+						auto armorItem = entry.player->getArmor((ArmorSlot) i);
+						chestContainer->addItemToFirstEmptySlot(armorItem);
+						entry.player->setArmor((ArmorSlot) i, ItemStack::EMPTY_ITEM);
+					}
 
-        			chestContainer->addItemToFirstEmptySlot(playerUIItem);
-        			entry.player->setPlayerUIItem(PlayerUISlot::CursorSelected, ItemStack::EMPTY_ITEM);
+					auto offhandItem = entry.player->getOffhandSlot();
+					chestContainer->addItemToFirstEmptySlot(*offhandItem);
+					entry.player->setOffhandSlot(ItemStack::EMPTY_ITEM);
 
-        			if (settings.enableExtraItemsForChestGravestone && !settings.extraItems.empty()) {
-            
-            			for (auto &it : settings.extraItems) {
+					int playerInventorySlots = playerInventory->getContainerSize();
+					for (int i = 0; i < playerInventorySlots; i++) {
+						auto inventoryItem = playerInventory->getItem(i);
+						chestContainer->addItemToFirstEmptySlot(inventoryItem);
+						playerInventory->setItem(i, ItemStack::EMPTY_ITEM);
+					}
 
-                			CommandItem cmi;
-                			cmi.mId = it.id;
-                			ItemStack currentExtraItem;
+					chestContainer->addItemToFirstEmptySlot(playerUIItem);
+					entry.player->setPlayerUIItem(PlayerUISlot::CursorSelected, ItemStack::EMPTY_ITEM);
 
-                			it.count = std::clamp(it.count, 0, 32767);
-                			it.aux = std::clamp(it.aux, 0, 32767);
+					if (settings.enableExtraItemsForChestGravestone && !settings.extraItems.empty()) {
 
-                			cmi.createInstanceWithoutCommand(&currentExtraItem, 0, it.aux, false);
+						for (auto &it : settings.extraItems) {
 
-                			int maxStackSize = currentExtraItem.getMaxStackSize();
-                			int countNew = std::min(it.count, maxStackSize * playerInventorySlots);
+							CommandItem cmi;
+							cmi.mId = it.id;
+							ItemStack currentExtraItem;
 
-                			if (!currentExtraItem.isNull()) {
+							it.count = std::clamp(it.count, 0, 32767);
+							it.aux = std::clamp(it.aux, 0, 32767);
 
-                    			while (countNew > 0) {
+							cmi.createInstanceWithoutCommand(&currentExtraItem, 0, it.aux, false);
 
-                        			int currentStack = std::min(maxStackSize, countNew);
-                        			cmi.createInstanceWithoutCommand(&currentExtraItem, currentStack, it.aux, false);
-                        			countNew -= currentStack;
+							int maxStackSize = currentExtraItem.getMaxStackSize();
+							int countNew = std::min(it.count, maxStackSize * playerInventorySlots);
 
-                        			if (!it.customName.empty()) {
-                            			currentExtraItem.setCustomName(it.customName);
-                        			}
+							if (!currentExtraItem.isNull()) {
 
-                        			if (!it.lore.empty()) {
-                            			currentExtraItem.setCustomLore(it.lore);
-                        			}
+								while (countNew > 0) {
 
-                        			if (!it.enchants.empty()) {
+									int currentStack = std::min(maxStackSize, countNew);
+									cmi.createInstanceWithoutCommand(&currentExtraItem, currentStack, it.aux, false);
+									countNew -= currentStack;
 
-                            			for (auto &enchantList : it.enchants) {
+									if (!it.customName.empty()) {
+										currentExtraItem.setCustomName(it.customName);
+									}
 
-                                			for (auto &enchant : enchantList) {
+									if (!it.lore.empty()) {
+										currentExtraItem.setCustomLore(it.lore);
+									}
 
-                                    			EnchantmentInstance instance;
-                                    			instance.type  = (Enchant::Type) std::clamp(enchant.first, 0, 36);
-                                    			instance.level = std::clamp(enchant.second, -32768, 32767);
-                                    			EnchantUtils::applyEnchant(currentExtraItem, instance, true);
-                                			}
-                            			}
-                        			}
-                        			chestContainer->addItemToFirstEmptySlot(currentExtraItem);
-                    			}
-                			}
-            			}
-        			}
+									if (!it.enchants.empty()) {
 
-        			std::string chestName = entry.player->mPlayerName + "'s Gravestone";
-        			chestBlock_1->setCustomName(chestName);
-        			chestBlock_2->setCustomName(chestName);
-        
-        			((ChestBlockActor*)chestBlock_1)->mNotifyPlayersOnChange = true;
-        			chestBlock_1->onChanged(*region);
+										for (auto &enchantList : it.enchants) {
+
+											for (auto &enchant : enchantList) {
+
+												EnchantmentInstance instance;
+												instance.type  = (Enchant::Type) std::clamp(enchant.first, 0, 36);
+												instance.level = std::clamp(enchant.second, -32768, 32767);
+												EnchantUtils::applyEnchant(currentExtraItem, instance, true);
+											}
+										}
+									}
+									chestContainer->addItemToFirstEmptySlot(currentExtraItem);
+								}
+							}
+						}
+					}
+
+					std::string chestName = entry.player->mPlayerName + "'s Gravestone";
+					chestBlock_1->setCustomName(chestName);
+					chestBlock_2->setCustomName(chestName);
+
+					((ChestBlockActor*)chestBlock_1)->mNotifyPlayersOnChange = true;
+					chestBlock_1->onChanged(*region);
 				}
 				else {
 					entry.player->drop(playerUIItem, false);
@@ -174,13 +174,13 @@ void PreInit() {
 			if (getInCombat().count(xuid)) {
 				if (getInCombat()[xuid].xuid == entry.xuid) {
 					auto entry = db.Find(xuid);
-					if (entry) { 
-						entry->player->sendNetworkPacket(packet); 
+					if (entry) {
+						entry->player->sendNetworkPacket(packet);
 					}
 					getInCombat().erase(xuid);
 				}
 			}
-			
+
 			if (getInCombat().empty() && running) {
 				Mod::Scheduler::SetTimeOut(Mod::Scheduler::GameTick(1), [=](auto) {
 					Mod::Scheduler::ClearInterval(getToken());
@@ -191,7 +191,7 @@ void PreInit() {
 	});
 }
 void PostInit() {
-	for (std::string &str : settings.bannedCommandsVector) { 
+	for (std::string &str : settings.bannedCommandsVector) {
 		bannedCommands.emplace(str);
 	}
 	settings.bannedCommandsVector.clear();
@@ -216,12 +216,12 @@ THook(void, "?actuallyHurt@Player@@UEAAXHAEBVActorDamageSource@@_N@Z", Player &p
 			}
 
 			auto packet = TextPacket::createTextPacket<TextPacketType::JukeboxPopup>(settings.initiatedCombatMessage);
-			if (!getInCombat().count(entry->xuid)) { 
+			if (!getInCombat().count(entry->xuid)) {
 				entry->player->sendNetworkPacket(packet);
 			}
 			getInCombat()[entry->xuid].xuid = it->xuid;
 			getInCombat()[entry->xuid].time = settings.combatTime;
-			if (!getInCombat().count(it->xuid)) { 
+			if (!getInCombat().count(it->xuid)) {
 				it->player->sendNetworkPacket(packet);
 			}
 			getInCombat()[it->xuid].xuid = entry->xuid;
@@ -240,10 +240,10 @@ THook(void, "?actuallyHurt@Player@@UEAAXHAEBVActorDamageSource@@_N@Z", Player &p
 							if (--it->second.time > 0) {
 								std::string annouce =
 										boost::replace_all_copy(settings.combatTimeMessage, "%time%", std::to_string(it->second.time));
-								auto packet = TextPacket::createTextPacket<TextPacketType::JukeboxPopup>(annouce);       
+								auto packet = TextPacket::createTextPacket<TextPacketType::JukeboxPopup>(annouce);
 								if (settings.combatTimeMessageEnabled) {
 									player->player->sendNetworkPacket(packet);
-								}                  
+								}
 								++it;
 							}
 							else {
@@ -278,12 +278,12 @@ THook(void, "?die@Player@@UEAAXAEBVActorDamageSource@@@Z", Player &thi, void *sr
 		getInCombat().erase(it->xuid);
 		it->player->sendNetworkPacket(packet);
 		if (getInCombat().count(combat.xuid)) {
-			if (getInCombat()[combat.xuid].xuid == it->xuid) { 
+			if (getInCombat()[combat.xuid].xuid == it->xuid) {
 				auto entry = db.Find(combat.xuid);
-				if (entry) { 
+				if (entry) {
 					entry->player->sendNetworkPacket(packet);
 				}
-				getInCombat().erase(combat.xuid); 
+				getInCombat().erase(combat.xuid);
 			}
 		}
 		if (getInCombat().empty() && running) {
@@ -303,11 +303,11 @@ THook(void, "?handle@ServerNetworkHandler@@UEAAXAEBVNetworkIdentifier@@AEBVComma
 	if (!it || (!settings.operatorsCanBeInCombat && it->player->getCommandPermissionLevel() > CommandPermissionLevel::Any)) {
 		return original(snh, netid, pkt);
 	}
-	
+
 	std::string commandString(pkt.command);
-    commandString = commandString.substr(1);
-    std::vector<std::string> results;
-    boost::split(results, commandString, [](char c) { return c == ' '; });
+	commandString = commandString.substr(1);
+	std::vector<std::string> results;
+	boost::split(results, commandString, [](char c) { return c == ' '; });
 
 	if (bannedCommands.count(results[0]) && getInCombat().count(it->xuid)) {
 		auto packet = TextPacket::createTextPacket<TextPacketType::SystemMessage>(settings.usedBannedCombatCommandMessage);

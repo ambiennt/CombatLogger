@@ -43,39 +43,39 @@ struct itemToAdd {
   	std::vector<std::map<int32_t, int32_t>> enchants = {};
 
   	template <typename IO> static inline bool io(IO f, itemToAdd &settings, YAML::Node &node) {
-    	return f(settings.id, node["id"]) &&
-    		   f(settings.aux, node["aux"]) &&
-    		   f(settings.count, node["count"]) &&
-           	   f(settings.customName, node["customName"]) &&
-           	   f(settings.lore, node["lore"]) &&
-           	   f(settings.enchants, node["enchants"]);
+		return f(settings.id, node["id"]) &&
+			   f(settings.aux, node["aux"]) &&
+			   f(settings.count, node["count"]) &&
+		   	   f(settings.customName, node["customName"]) &&
+		   	   f(settings.lore, node["lore"]) &&
+		   	   f(settings.enchants, node["enchants"]);
    }
 };
 
 namespace YAML {
 template <> struct convert<itemToAdd> {
   	static Node encode(itemToAdd const& rhs) {
-    	Node node;
-    	node["id"]         = rhs.id;
-    	node["aux"]        = rhs.aux;
-    	node["count"]      = rhs.count;
-    	node["customName"] = rhs.customName;
-    	node["lore"]       = rhs.lore;
-    	node["enchants"]   = rhs.enchants;
-    	return node;
+		Node node;
+		node["id"]         = rhs.id;
+		node["aux"]        = rhs.aux;
+		node["count"]      = rhs.count;
+		node["customName"] = rhs.customName;
+		node["lore"]       = rhs.lore;
+		node["enchants"]   = rhs.enchants;
+		return node;
   	}
 
   	static bool decode(Node const& node, itemToAdd &rhs) {
 
-    	if (!node.IsMap()) { return false; }
+		if (!node.IsMap()) { return false; }
 
-    	rhs.id         = node["id"].as<int32_t>();
-    	rhs.aux        = node["aux"].as<int32_t>();
-    	rhs.count      = node["count"].as<int32_t>();
-    	rhs.customName = node["customName"].as<std::string>();
-    	rhs.lore 	   = node["lore"].as<std::vector<std::string>>();
-    	rhs.enchants   = node["enchants"].as<std::vector<std::map<int32_t, int32_t>>>();
-    	return true;
+		rhs.id         = node["id"].as<int32_t>();
+		rhs.aux        = node["aux"].as<int32_t>();
+		rhs.count      = node["count"].as<int32_t>();
+		rhs.customName = node["customName"].as<std::string>();
+		rhs.lore 	   = node["lore"].as<std::vector<std::string>>();
+		rhs.enchants   = node["enchants"].as<std::vector<std::map<int32_t, int32_t>>>();
+		return true;
   	}
 };
 } // namespace YAML

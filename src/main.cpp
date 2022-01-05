@@ -13,12 +13,6 @@ std::unordered_map<uint64_t, Combat>& getInCombat() {
 	return inCombat;
 }
 
-BlockPos getBlockPos(const Vec3& currPos) {
-    BlockPos pos;
-    CallServerClassMethod<void>("??0BlockPos@@QEAA@AEBVVec3@@@Z", &pos, currPos);
-    return pos;
-}
-
 void dllenter() {}
 void dllexit() {}
 void PreInit() {
@@ -36,54 +30,53 @@ void PreInit() {
 				return true;
 			});
 
-			auto gr = CallServerClassMethod<GameRules*>("?getGameRules@Level@@QEAAAEAVGameRules@@XZ", LocateService<Level>());
-			GameRuleIds keepInventoryId = GameRuleIds::KeepInventory;
+			auto* gr = &LocateService<Level>()->getGameRules();
+    		GameRulesIndex keepInventoryId = GameRulesIndex::KeepInventory;
+    		bool isKeepInventory = CallServerClassMethod<bool>("?getBool@GameRules@@QEBA_NUGameRuleId@@@Z", gr, &keepInventoryId);
 
-			if (entry.player->isPlayerInitialized() && !CallServerClassMethod<bool>("?getBool@GameRules@@QEBA_NUGameRuleId@@@Z", gr, &keepInventoryId)) {
+			if (entry.player->isPlayerInitialized() && !isKeepInventory) {
 
 				entry.player->clearVanishEnchantedItems();
-				Inventory* playerInventory = CallServerClassMethod<PlayerInventory*>(
-					"?getSupplies@Player@@QEAAAEAVPlayerInventory@@XZ", entry.player)->inventory.get();
+				auto playerInventory = entry.player->mInventory->inventory.get();
 				auto playerUIItem = entry.player->getPlayerUIItem();
 				auto newPos = entry.player->getPos();
 				const auto region = entry.player->mRegion;
 
 				if (settings.setChestGravestoneOnLog) {
-        			newPos.y -= 1.62;
+        			newPos.y -= 1.62f;
 
         			int dimId = entry.player->mDimensionId;
         			switch ((DimensionIds) dimId) {
-            			case DimensionIds::Overworld:
-                			{   
-                    			const auto& generator = LocateService<Level>()->GetLevelDataWrapper()->getWorldGenerator();
-                    			float lowerBounds = (generator == GeneratorType::Flat ? 1.0f : 5.0f);
+        				
+            			case DimensionIds::Overworld: {   
+                    		const auto& generator = LocateService<Level>()->GetLevelDataWrapper()->getWorldGenerator();
+                    		float lowerBounds = (generator == GeneratorType::Flat ? 1.0f : 5.0f);
                     
-                    			if (newPos.y > 255.0f) newPos.y = 255.0f;
-                    			else if (newPos.y < lowerBounds) newPos.y = lowerBounds;
-                    			break;
-                			}
+                    		if (newPos.y > 255.0f) newPos.y = 255.0f;
+                    		else if (newPos.y < lowerBounds) newPos.y = lowerBounds;
+                    		break;
+                		}
 
-            			case DimensionIds::Nether:
-                			{   
-                    			if (newPos.y > 122.0f) newPos.y = 122.0f;
-                    			else if (newPos.y < 5.0f) newPos.y = 5.0f;
-                    			break;
-                			}
+            			case DimensionIds::Nether: {   
+                    		if (newPos.y > 122.0f) newPos.y = 122.0f;
+                    		else if (newPos.y < 5.0f) newPos.y = 5.0f;
+                    		break;
+                		}
 
-            			case DimensionIds::TheEnd:
-                			{   
-                    			if (newPos.y > 255.0f) newPos.y = 255.0f;
-                    			else if (newPos.y < 0.0f) newPos.y = 0.0f;
-                    			break;
-                			}
+            			case DimensionIds::TheEnd: {   
+                    		if (newPos.y > 255.0f) newPos.y = 255.0f;
+                    		else if (newPos.y < 0.0f) newPos.y = 0.0f;
+                    		break;
+                		}
 
             			default: break;
         			}
 
-        			auto normalizedChestPos_1 = getBlockPos(newPos);
+        			BlockPos bp;
+        			auto normalizedChestPos_1 = bp.getBlockPos(newPos);
         			region->setBlock(normalizedChestPos_1, *VanillaBlocks::mChest, 3, nullptr);
-        			newPos.x += 1.0;
-        			auto normalizedChestPos_2 = getBlockPos(newPos);
+        			newPos.x += 1.0f;
+        			auto normalizedChestPos_2 = bp.getBlockPos(newPos);
         			region->setBlock(normalizedChestPos_2, *VanillaBlocks::mChest, 3, nullptr);
 
         			auto chestBlock_1 = region->getBlockEntity(normalizedChestPos_1);
@@ -111,11 +104,63 @@ void PreInit() {
         			chestContainer->addItemToFirstEmptySlot(playerUIItem);
         			entry.player->setPlayerUIItem(PlayerUISlot::CursorSelected, ItemStack::EMPTY_ITEM);
 
+        			if (settings.enableExtraItemsForChestGravestone && !settings.extraItems.empty()) {
+            
+            			for (auto &it : settings.extraItems) {
+
+                			CommandItem cmi;
+                			cmi.mId = it.id;
+                			ItemStack currentExtraItem;
+
+                			it.count = std::clamp(it.count, 0, 32767);
+                			it.aux = std::clamp(it.aux, 0, 32767);
+
+                			cmi.createInstanceWithoutCommand(&currentExtraItem, 0, it.aux, false);
+
+                			int maxStackSize = currentExtraItem.getMaxStackSize();
+                			int countNew = std::min(it.count, maxStackSize * playerInventorySlots);
+
+                			if (!currentExtraItem.isNull()) {
+
+                    			while (countNew > 0) {
+
+                        			int currentStack = std::min(maxStackSize, countNew);
+                        			cmi.createInstanceWithoutCommand(&currentExtraItem, currentStack, it.aux, false);
+                        			countNew -= currentStack;
+
+                        			if (!it.customName.empty()) {
+                            			currentExtraItem.setCustomName(it.customName);
+                        			}
+
+                        			if (!it.lore.empty()) {
+                            			currentExtraItem.setCustomLore(it.lore);
+                        			}
+
+                        			if (!it.enchants.empty()) {
+
+                            			for (auto &enchantList : it.enchants) {
+
+                                			for (auto &enchant : enchantList) {
+
+                                    			EnchantmentInstance instance;
+                                    			instance.type  = (Enchant::Type) std::clamp(enchant.first, 0, 36);
+                                    			instance.level = std::clamp(enchant.second, -32768, 32767);
+                                    			EnchantUtils::applyEnchant(currentExtraItem, instance, true);
+                                			}
+                            			}
+                        			}
+                        			chestContainer->addItemToFirstEmptySlot(currentExtraItem);
+                    			}
+                			}
+            			}
+        			}
+
         			std::string chestName = entry.player->mPlayerName + "'s Gravestone";
         			chestBlock_1->setCustomName(chestName);
         			chestBlock_2->setCustomName(chestName);
-        			direct_access<bool>(chestBlock_1, 0x278) = true;
-        			CallServerClassMethod<void>("?onChanged@ChestBlockActor@@UEAAXAEAVBlockSource@@@Z", chestBlock_1, region);
+        
+        			((ChestBlockActor*)chestBlock_1)->mNotifyPlayersOnChange = true;
+        			chestBlock_1->onChanged(*region);
 				}
 				else {
 					entry.player->drop(playerUIItem, false);

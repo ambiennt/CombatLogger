@@ -41,7 +41,7 @@ constexpr const char* dimIdToString(DimensionIds d) {
 void handleCombatDeathSequence(Player *dead, Player *killer) {
 
 	std::string deathStr = "§c" + dead->mPlayerName + " was slain";
-	
+
 	if (killer) {
 
 		float kpCurrHealth = killer->getAttributeInstanceFromId(AttributeIds::Health)->currentVal;
@@ -74,7 +74,7 @@ void handleCombatDeathSequence(Player *dead, Player *killer) {
 	if (settings.executeDeathCommands) {
 
 		auto& cs = Mod::CommandSupport::GetInstance();
-	
+
 		auto origin1 = std::make_unique<Mod::CustomCommandOrigin>();
 		cs.ExecuteCommand(std::move(origin1), "execute @a[name=\"" + dead->mPlayerName + "\"] ~ ~ ~ function death");
 
@@ -307,7 +307,7 @@ THook(void, "?actuallyHurt@Player@@UEAAXHAEBVActorDamageSource@@_N@Z", Player *p
 			getInCombat()[it->xuid].time = settings.combatTime;
 
 			if (!running) {
-				
+
 				running = true;
 				token = Mod::Scheduler::SetInterval(Mod::Scheduler::GameTick(20), [=](auto) {
 

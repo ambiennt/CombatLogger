@@ -1,24 +1,97 @@
 #include "main.h"
 #include <dllentry.h>
 
-std::unordered_map<uint64_t, Combat> inCombat;
+DEFAULT_SETTINGS(settings);
+
 std::set<std::string> bannedCommands;
 bool running = false;
 bool first = true;
 Mod::Scheduler::Token token;
-DEFAULT_SETTINGS(settings);
 
-Mod::Scheduler::Token getToken() { return token; }
-std::unordered_map<uint64_t, Combat>& getInCombat() {
+static Mod::PlayerDatabase &db = Mod::PlayerDatabase::GetInstance();
+
+__forceinline Mod::Scheduler::Token getToken(void) {
+	return token;
+}
+
+struct Combat {
+	uint64_t xuid;
+	int32_t time;
+};
+
+std::unordered_map<uint64_t, struct Combat> inCombat;
+
+__forceinline std::unordered_map<uint64_t, Combat>& getInCombat(void) {
 	return inCombat;
+}
+
+constexpr const char* dimIdToString(DimensionIds d) {
+	switch (d) {
+		case DimensionIds::Overworld:
+			return "overworld";
+		case DimensionIds::Nether:
+			return "nether";
+		case DimensionIds::TheEnd:
+			return "the end";
+
+		default: return "Unknown";
+	}
+}
+
+void handleCombatDeathSequence(Player *dead, Player *killer) {
+
+	std::string deathStr = "§c" + dead->mPlayerName + " was slain";
+	
+	if (killer) {
+
+		float kpCurrHealth = killer->getAttributeInstanceFromId(AttributeIds::Health)->currentVal;
+		float kpCurrAbsorption = killer->getAttributeInstanceFromId(AttributeIds::Absorption)->currentVal;
+
+		std::string kpName = killer->mPlayerName + " §a[" + std::to_string((int) kpCurrHealth);
+		if (settings.useResourcePackGlyphsInDeathMessage) {
+			kpName += "" + (kpCurrAbsorption > 0.0f ? " " + std::to_string((int) kpCurrAbsorption) + "]§c" : "]§c"); // glyph 0xE1FE, 0xE1FF
+		}
+		else {
+			kpName += "§c❤" + (kpCurrAbsorption > 0.0f ? " §a" + std::to_string((int) kpCurrAbsorption) + "§e❤§a]§c" : "§a]§c");
+		}
+
+		deathStr += " by " + kpName;
+	}
+
+	const auto& pos = dead->getPos();
+	const DimensionIds dim = (DimensionIds)(dead->mDimensionId);
+
+	deathStr += " at " + std::to_string((int) pos.x) + ", " + std::to_string((int) (pos.y - 1.62f)) + ", " + std::to_string((int) pos.z) +
+		((dim != DimensionIds::Overworld) ? (" [" + std::string(dimIdToString(dim)) + "]") : "");
+	auto deathMsgPkt = TextPacket::createTextPacket<TextPacketType::SystemMessage>(deathStr);
+
+	LocateService<Level>()->forEachPlayer([&](Player &p) -> bool {
+		p.sendNetworkPacket(deathMsgPkt);
+		return true;
+	});
+
+	// command stuff
+	if (settings.executeDeathCommands) {
+
+		auto& cs = Mod::CommandSupport::GetInstance();
+	
+		auto origin1 = std::make_unique<Mod::CustomCommandOrigin>();
+		cs.ExecuteCommand(std::move(origin1), "execute @a[name=\"" + dead->mPlayerName + "\"] ~ ~ ~ function death");
+
+		if (killer) {
+			auto origin2 = std::make_unique<Mod::CustomCommandOrigin>(); // make 2 origins to not double delete pointer
+			cs.ExecuteCommand(std::move(origin2), "execute \"" + killer->mPlayerName + "\" ~ ~ ~ function killer");
+		}
+	}
 }
 
 void dllenter() {}
 void dllexit() {}
 void PreInit() {
 	Mod::PlayerDatabase::GetInstance().AddListener(SIG("left"), [](Mod::PlayerEntry const &entry) {
-		auto &db = Mod::PlayerDatabase::GetInstance();
+
 		if (getInCombat().count(entry.xuid)) {
+
 			auto packet = TextPacket::createTextPacket<TextPacketType::JukeboxPopup>(settings.endedCombatMessage);
 			uint64_t xuid = getInCombat()[entry.xuid].xuid;
 			getInCombat().erase(entry.xuid);
@@ -31,8 +104,7 @@ void PreInit() {
 			});
 
 			auto* gr = &LocateService<Level>()->getGameRules();
-			GameRulesIndex keepInventoryId = GameRulesIndex::KeepInventory;
-			bool isKeepInventory = CallServerClassMethod<bool>("?getBool@GameRules@@QEBA_NUGameRuleId@@@Z", gr, &keepInventoryId);
+			bool isKeepInventory = gr->getBool(GameRulesIndex::KeepInventory);
 
 			if (entry.player->isPlayerInitialized() && !isKeepInventory) {
 
@@ -49,7 +121,7 @@ void PreInit() {
 					switch ((DimensionIds) dimId) {
 
 						case DimensionIds::Overworld: {
-							const auto& generator = LocateService<Level>()->GetLevelDataWrapper()->getWorldGenerator();
+							const auto& generator = LocateService<Level>()->getLevelDataWrapper()->getWorldGenerator();
 							float lowerBounds = (generator == GeneratorType::Flat ? 1.0f : 5.0f);
 
 							if (newPos.y > 255.0f) newPos.y = 255.0f;
@@ -172,16 +244,20 @@ void PreInit() {
 			entry.player->kill();
 
 			if (getInCombat().count(xuid)) {
+
 				if (getInCombat()[xuid].xuid == entry.xuid) {
-					auto entry = db.Find(xuid);
-					if (entry) {
-						entry->player->sendNetworkPacket(packet);
+
+					auto attacker = db.Find(xuid);
+					if (attacker) {
+						attacker->player->sendNetworkPacket(packet);
+						handleCombatDeathSequence(entry.player, attacker->player);
 					}
 					getInCombat().erase(xuid);
 				}
 			}
 
 			if (getInCombat().empty() && running) {
+
 				Mod::Scheduler::SetTimeOut(Mod::Scheduler::GameTick(1), [=](auto) {
 					Mod::Scheduler::ClearInterval(getToken());
 				});
@@ -197,40 +273,45 @@ void PostInit() {
 	settings.bannedCommandsVector.clear();
 }
 
-THook(void, "?actuallyHurt@Player@@UEAAXHAEBVActorDamageSource@@_N@Z", Player &player, int dmg, ActorDamageSource *source, bool bypassArmor) {
-	auto &db = Mod::PlayerDatabase::GetInstance();
-	auto it = db.Find((Player *) &player);
+THook(void, "?actuallyHurt@Player@@UEAAXHAEBVActorDamageSource@@_N@Z", Player *player, int dmg, ActorDamageSource &source, bool bypassArmor) {
 
-	if (!it || (!settings.operatorsCanBeInCombat && it->player->getCommandPermissionLevel() > CommandPermissionLevel::Any)) {
+	auto it = db.Find(player);
+
+	if (!it || (!settings.operatorsCanBeInCombat && it->player->isOperator())) {
 		return original(player, dmg, source, bypassArmor);
 	}
 
-	if (source->isChildEntitySource() || source->isEntitySource()) {
-		Actor *ac = LocateService<Level>()->fetchEntity(source->getEntityUniqueID(), false);
-		if (ac && (ac->getEntityTypeId() == ActorType::Player_0) && (&player != ac)) { // if source matches target
-			auto &db = Mod::PlayerDatabase::GetInstance();
-			auto entry = db.Find((Player *) ac);
+	if (source.isChildEntitySource() || source.isEntitySource()) {
 
-			if (!entry || (!settings.operatorsCanBeInCombat && entry->player->getCommandPermissionLevel() > CommandPermissionLevel::Any)) {
+		auto tempAttacker = LocateService<Level>()->fetchEntity(source.getEntityUniqueID(), false);
+
+		if (tempAttacker && (tempAttacker->getEntityTypeId() == ActorType::Player_0) && (player != tempAttacker)) { // if source matches target
+
+			auto attacker = db.Find((Player*) tempAttacker);
+
+			if (!attacker || (!settings.operatorsCanBeInCombat && attacker->player->isOperator())) {
 				return original(player, dmg, source, bypassArmor);
 			}
 
 			auto packet = TextPacket::createTextPacket<TextPacketType::JukeboxPopup>(settings.initiatedCombatMessage);
-			if (!getInCombat().count(entry->xuid)) {
-				entry->player->sendNetworkPacket(packet);
+			if (!getInCombat().count(attacker->xuid)) {
+				attacker->player->sendNetworkPacket(packet);
 			}
-			getInCombat()[entry->xuid].xuid = it->xuid;
-			getInCombat()[entry->xuid].time = settings.combatTime;
+
+			getInCombat()[attacker->xuid].xuid = it->xuid;
+			getInCombat()[attacker->xuid].time = settings.combatTime;
 			if (!getInCombat().count(it->xuid)) {
 				it->player->sendNetworkPacket(packet);
 			}
-			getInCombat()[it->xuid].xuid = entry->xuid;
+			getInCombat()[it->xuid].xuid = attacker->xuid;
 			getInCombat()[it->xuid].time = settings.combatTime;
+
 			if (!running) {
+				
 				running = true;
 				token = Mod::Scheduler::SetInterval(Mod::Scheduler::GameTick(20), [=](auto) {
+
 					if (running) {
-						auto &db = Mod::PlayerDatabase::GetInstance();
 						for (auto it = getInCombat().begin(); it != getInCombat().end();) {
 							auto player = db.Find(it->first);
 							if (!player) {
@@ -238,8 +319,7 @@ THook(void, "?actuallyHurt@Player@@UEAAXHAEBVActorDamageSource@@_N@Z", Player &p
 								continue;
 							}
 							if (--it->second.time > 0) {
-								std::string annouce =
-										boost::replace_all_copy(settings.combatTimeMessage, "%time%", std::to_string(it->second.time));
+								std::string annouce = boost::replace_all_copy(settings.combatTimeMessage, "%time%", std::to_string(it->second.time));
 								auto packet = TextPacket::createTextPacket<TextPacketType::JukeboxPopup>(annouce);
 								if (settings.combatTimeMessageEnabled) {
 									player->player->sendNetworkPacket(packet);
@@ -253,7 +333,9 @@ THook(void, "?actuallyHurt@Player@@UEAAXHAEBVActorDamageSource@@_N@Z", Player &p
 							}
 						}
 						if (getInCombat().empty() && running) {
-							Mod::Scheduler::SetTimeOut(Mod::Scheduler::GameTick(1), [=](auto) { Mod::Scheduler::ClearInterval(getToken()); });
+							Mod::Scheduler::SetTimeOut(Mod::Scheduler::GameTick(1), [=](auto) {
+								Mod::Scheduler::ClearInterval(getToken());
+							});
 							running = false;
 						}
 					}
@@ -264,43 +346,53 @@ THook(void, "?actuallyHurt@Player@@UEAAXHAEBVActorDamageSource@@_N@Z", Player &p
 	original(player, dmg, source, bypassArmor);
 }
 
-THook(void, "?die@Player@@UEAAXAEBVActorDamageSource@@@Z", Player &thi, void *src) {
-	auto &db = Mod::PlayerDatabase::GetInstance();
-	auto it = db.Find((Player *) &thi);
+THook(void, "?die@Player@@UEAAXAEBVActorDamageSource@@@Z", Player *player, void* source) {
 
-	if (!it || (!settings.operatorsCanBeInCombat && it->player->getCommandPermissionLevel() > CommandPermissionLevel::Any)) {
-		return original(thi, src);
+	auto it = db.Find(player);
+
+	if (!it || (!settings.operatorsCanBeInCombat && it->player->isOperator())) {
+		return original(player, source);
 	}
 
 	if (getInCombat().count(it->xuid)) {
+
 		auto packet = TextPacket::createTextPacket<TextPacketType::JukeboxPopup>(settings.endedCombatMessage);
 		Combat &combat = getInCombat()[it->xuid];
 		getInCombat().erase(it->xuid);
 		it->player->sendNetworkPacket(packet);
+
 		if (getInCombat().count(combat.xuid)) {
+
 			if (getInCombat()[combat.xuid].xuid == it->xuid) {
-				auto entry = db.Find(combat.xuid);
-				if (entry) {
-					entry->player->sendNetworkPacket(packet);
+
+				auto attacker = db.Find(combat.xuid);
+				if (attacker) {
+					attacker->player->sendNetworkPacket(packet);
+					handleCombatDeathSequence(player, attacker->player);
 				}
 				getInCombat().erase(combat.xuid);
 			}
 		}
+
 		if (getInCombat().empty() && running) {
-			Mod::Scheduler::SetTimeOut(Mod::Scheduler::GameTick(1), [=](auto) { Mod::Scheduler::ClearInterval(getToken()); });
+			Mod::Scheduler::SetTimeOut(Mod::Scheduler::GameTick(1), [=](auto) {
+				Mod::Scheduler::ClearInterval(getToken());
+			});
 			running = false;
 		}
 	}
-	original(thi, src);
+	else {
+		handleCombatDeathSequence(player, nullptr);
+	}
+	original(player, source);
 }
 
 THook(void, "?handle@ServerNetworkHandler@@UEAAXAEBVNetworkIdentifier@@AEBVCommandRequestPacket@@@Z",
 	ServerNetworkHandler &snh, NetworkIdentifier const &netid, CommandRequestPacket &pkt) {
 
-	auto &db = Mod::PlayerDatabase::GetInstance();
 	auto it = db.Find(netid);
 
-	if (!it || (!settings.operatorsCanBeInCombat && it->player->getCommandPermissionLevel() > CommandPermissionLevel::Any)) {
+	if (!it || (!settings.operatorsCanBeInCombat && it->player->isOperator())) {
 		return original(snh, netid, pkt);
 	}
 

@@ -19,7 +19,7 @@ struct Combat {
 	int32_t time;
 };
 
-std::unordered_map<uint64_t, struct Combat> inCombat;
+static std::unordered_map<uint64_t, struct Combat> inCombat;
 
 __forceinline std::unordered_map<uint64_t, Combat>& getInCombat(void) {
 	return inCombat;

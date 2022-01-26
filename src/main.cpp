@@ -10,7 +10,7 @@ Mod::Scheduler::Token token;
 
 static Mod::PlayerDatabase &db = Mod::PlayerDatabase::GetInstance();
 
-__forceinline Mod::Scheduler::Token getToken(void) {
+inline Mod::Scheduler::Token getToken(void) {
 	return token;
 }
 
@@ -21,8 +21,20 @@ struct Combat {
 
 static std::unordered_map<uint64_t, struct Combat> inCombat;
 
-__forceinline std::unordered_map<uint64_t, Combat>& getInCombat(void) {
+inline std::unordered_map<uint64_t, Combat>& getInCombat(void) {
 	return inCombat;
+}
+
+inline bool isInCombat(uint64_t xuid) {
+	return getInCombat().count(xuid);
+}
+
+inline void clearCombatStatus(uint64_t xuid) {
+	getInCombat().erase(xuid);
+}
+
+inline bool isInCombatWith(uint64_t thisXuid, uint64_t thatXuid) {
+	return (getInCombat()[thisXuid].xuid == thatXuid);
 }
 
 constexpr const char* dimIdToString(DimensionIds d) {
@@ -34,7 +46,7 @@ constexpr const char* dimIdToString(DimensionIds d) {
 		case DimensionIds::TheEnd:
 			return "the end";
 
-		default: return "Unknown";
+		default: return "unknown";
 	}
 }
 
@@ -90,18 +102,7 @@ void dllexit() {}
 void PreInit() {
 	Mod::PlayerDatabase::GetInstance().AddListener(SIG("left"), [](Mod::PlayerEntry const &entry) {
 
-		if (getInCombat().count(entry.xuid)) {
-
-			auto packet = TextPacket::createTextPacket<TextPacketType::JukeboxPopup>(settings.endedCombatMessage);
-			uint64_t xuid = getInCombat()[entry.xuid].xuid;
-			getInCombat().erase(entry.xuid);
-			std::string annouce = boost::replace_all_copy(settings.logoutWhileInCombatMessage, "%name%", entry.name);
-			auto packetAnnouce = TextPacket::createTextPacket<TextPacketType::SystemMessage>(annouce);
-
-			LocateService<Level>()->forEachPlayer([&](Player const &p) -> bool {
-				p.sendNetworkPacket(packetAnnouce);
-				return true;
-			});
+		if (isInCombat(entry.xuid)) { // if this player is in combat
 
 			auto* gr = &LocateService<Level>()->getGameRules();
 			bool isKeepInventory = gr->getBool(GameRulesIndex::KeepInventory);
@@ -109,7 +110,7 @@ void PreInit() {
 			if (entry.player->isPlayerInitialized() && !isKeepInventory) {
 
 				entry.player->clearVanishEnchantedItems();
-				auto playerInventory = entry.player->mInventory->inventory.get();
+				auto playerInventory = entry.player->getRawInventoryPtr();
 				auto playerUIItem = entry.player->getPlayerUIItem();
 				auto newPos = entry.player->getPos();
 				const auto region = entry.player->mRegion;
@@ -241,33 +242,46 @@ void PreInit() {
 				}
 			}
 
-			entry.player->kill();
+			std::string annouceStr = boost::replace_all_copy(settings.logoutWhileInCombatMessage, "%name%", entry.name);
+			auto combatLogAnnouncePkt = TextPacket::createTextPacket<TextPacketType::SystemMessage>(annouceStr);
 
-			if (getInCombat().count(xuid)) {
+			LocateService<Level>()->forEachPlayer([&](Player const &p) -> bool {
+				p.sendNetworkPacket(combatLogAnnouncePkt);
+				return true;
+			});
 
-				if (getInCombat()[xuid].xuid == entry.xuid) {
+			uint64_t otherXuid = getInCombat()[entry.xuid].xuid;
+			if (isInCombat(otherXuid)) { // if other player is in combat
 
-					auto attacker = db.Find(xuid);
+				if (isInCombatWith(entry.xuid, otherXuid)) { // if other player is in combat with this player
+
+					clearCombatStatus(otherXuid);
+
+					auto attacker = db.Find(otherXuid);
 					if (attacker) {
-						attacker->player->sendNetworkPacket(packet);
+						// endCombatPkt can be locally scoped here because we don't need to send it to the player who left
+						auto endCombatPkt = TextPacket::createTextPacket<TextPacketType::JukeboxPopup>(settings.endedCombatMessage);
+						attacker->player->sendNetworkPacket(endCombatPkt);
 						handleCombatDeathSequence(entry.player, attacker->player);
 					}
-					getInCombat().erase(xuid);
 				}
 			}
+			clearCombatStatus(entry.xuid);
 
-			if (getInCombat().empty() && running) {
+			if (getInCombat().empty() && running) { // if there are no active combats and scheduler is running
 
 				Mod::Scheduler::SetTimeOut(Mod::Scheduler::GameTick(1), [=](auto) {
 					Mod::Scheduler::ClearInterval(getToken());
 				});
 				running = false;
 			}
+
+			entry.player->kill(); // won't actually kill the player until they join back
 		}
 	});
 }
 void PostInit() {
-	for (std::string &str : settings.bannedCommandsVector) {
+	for (auto& str : settings.bannedCommandsVector) {
 		bannedCommands.emplace(str);
 	}
 	settings.bannedCommandsVector.clear();
@@ -293,15 +307,15 @@ THook(void, "?actuallyHurt@Player@@UEAAXHAEBVActorDamageSource@@_N@Z", Player *p
 				return original(player, dmg, source, bypassArmor);
 			}
 
-			auto packet = TextPacket::createTextPacket<TextPacketType::JukeboxPopup>(settings.initiatedCombatMessage);
-			if (!getInCombat().count(attacker->xuid)) {
-				attacker->player->sendNetworkPacket(packet);
+			auto initiatedCombatPkt = TextPacket::createTextPacket<TextPacketType::JukeboxPopup>(settings.initiatedCombatMessage);
+			if (!isInCombat(attacker->xuid)) {
+				attacker->player->sendNetworkPacket(initiatedCombatPkt);
 			}
 
 			getInCombat()[attacker->xuid].xuid = it->xuid;
 			getInCombat()[attacker->xuid].time = settings.combatTime;
-			if (!getInCombat().count(it->xuid)) {
-				it->player->sendNetworkPacket(packet);
+			if (!isInCombat(it->xuid)) {
+				it->player->sendNetworkPacket(initiatedCombatPkt);
 			}
 			getInCombat()[it->xuid].xuid = attacker->xuid;
 			getInCombat()[it->xuid].time = settings.combatTime;
@@ -319,16 +333,16 @@ THook(void, "?actuallyHurt@Player@@UEAAXHAEBVActorDamageSource@@_N@Z", Player *p
 								continue;
 							}
 							if (--it->second.time > 0) {
-								std::string annouce = boost::replace_all_copy(settings.combatTimeMessage, "%time%", std::to_string(it->second.time));
-								auto packet = TextPacket::createTextPacket<TextPacketType::JukeboxPopup>(annouce);
+								std::string combatTimeStr = boost::replace_all_copy(settings.combatTimeMessage, "%time%", std::to_string(it->second.time));
+								auto combatTimePkt = TextPacket::createTextPacket<TextPacketType::JukeboxPopup>(combatTimeStr);
 								if (settings.combatTimeMessageEnabled) {
-									player->player->sendNetworkPacket(packet);
+									player->player->sendNetworkPacket(combatTimePkt);
 								}
 								++it;
 							}
 							else {
-								auto packet = TextPacket::createTextPacket<TextPacketType::JukeboxPopup>(settings.endedCombatMessage);
-								player->player->sendNetworkPacket(packet);
+								auto combatEndPkt = TextPacket::createTextPacket<TextPacketType::JukeboxPopup>(settings.endedCombatMessage);
+								player->player->sendNetworkPacket(combatEndPkt);
 								it = getInCombat().erase(it);
 							}
 						}
@@ -354,25 +368,26 @@ THook(void, "?die@Player@@UEAAXAEBVActorDamageSource@@@Z", Player *player, void*
 		return original(player, source);
 	}
 
-	if (getInCombat().count(it->xuid)) {
+	if (isInCombat(it->xuid)) {
 
-		auto packet = TextPacket::createTextPacket<TextPacketType::JukeboxPopup>(settings.endedCombatMessage);
-		Combat &combat = getInCombat()[it->xuid];
-		getInCombat().erase(it->xuid);
-		it->player->sendNetworkPacket(packet);
+		auto endCombatPkt = TextPacket::createTextPacket<TextPacketType::JukeboxPopup>(settings.endedCombatMessage);
 
-		if (getInCombat().count(combat.xuid)) {
+		uint64_t otherXuid = getInCombat()[it->xuid].xuid;
+		if (isInCombat(otherXuid)) {
 
-			if (getInCombat()[combat.xuid].xuid == it->xuid) {
+			if (isInCombatWith(it->xuid, otherXuid)) {
 
-				auto attacker = db.Find(combat.xuid);
+				clearCombatStatus(otherXuid);
+
+				auto attacker = db.Find(otherXuid);
 				if (attacker) {
-					attacker->player->sendNetworkPacket(packet);
+					attacker->player->sendNetworkPacket(endCombatPkt);
 					handleCombatDeathSequence(player, attacker->player);
 				}
-				getInCombat().erase(combat.xuid);
 			}
 		}
+		clearCombatStatus(it->xuid);
+		it->player->sendNetworkPacket(endCombatPkt);
 
 		if (getInCombat().empty() && running) {
 			Mod::Scheduler::SetTimeOut(Mod::Scheduler::GameTick(1), [=](auto) {

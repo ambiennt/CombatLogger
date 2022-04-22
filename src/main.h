@@ -7,9 +7,10 @@
 #include <base/scheduler.h>
 #include <Actor/Player.h>
 #include <Actor/ActorDamageSource.h>
+#include <Actor/ExperienceOrb.h>
 #include <Level/Level.h>
 #include <Level/GameRules.h>
-#include <Level/DimensionIds.h>
+#include <Level/DimensionID.h>
 #include <Container/PlayerInventory.h>
 #include <Packet/TextPacket.h>
 #include <Net/ServerNetworkHandler.h>
@@ -87,10 +88,12 @@ inline struct Settings {
 	std::vector<std::string> bannedCommandsVector;
 	std::string usedBannedCombatCommandMessage = "You cannot use this command while in combat!";
 
-	bool setChestGravestoneOnLog = false;
-	bool enableExtraItemsForChestGravestone = false;
 	bool useResourcePackGlyphsInDeathMessage = false;
 	bool executeDeathCommands = true;
+	std::string deathCommand = "function death";
+	std::string killerCommand = "function killer";
+	bool setChestGravestoneOnLog = false;
+	bool enableExtraItemsForChestGravestone = false;
 	std::vector<itemToAdd> extraItems = {itemToAdd()};
 
 	template <typename IO> static inline bool io(IO f, Settings &settings, YAML::Node &node) {
@@ -101,14 +104,43 @@ inline struct Settings {
 			   	f(settings.combatTimeMessage, node["combatTimeMessage"]) &&
 			   	f(settings.endedCombatMessage, node["endedCombatMessage"]) &&
 			   	f(settings.logoutWhileInCombatMessage, node["logoutWhileInCombatMessage"]) &&
-			   	f(settings.bannedCommandsVector, node["bannedCommands"]) &&
+			   	f(settings.bannedCommandsVector, node["bannedCommandsInCombat"]) &&
 			   	f(settings.usedBannedCombatCommandMessage, node["usedBannedCombatCommandMessage"]) &&
-			   	f(settings.setChestGravestoneOnLog, node["setChestGravestoneOnLog"]) &&
-			   	f(settings.enableExtraItemsForChestGravestone, node["enableExtraItemsForChestGravestone"]) &&
 			   	f(settings.useResourcePackGlyphsInDeathMessage, node["useResourcePackGlyphsInDeathMessage"]) &&
 			   	f(settings.executeDeathCommands, node["executeDeathCommands"]) &&
+			   	f(settings.deathCommand, node["deathCommand"]) &&
+			   	f(settings.killerCommand, node["killerCommand"]) &&
+			   	f(settings.setChestGravestoneOnLog, node["setChestGravestoneOnLog"]) &&
+			   	f(settings.enableExtraItemsForChestGravestone, node["enableExtraItemsForChestGravestone"]) &&
 			   	f(settings.extraItems, node["extraItems"]);
 	}
 } settings;
+
+namespace CombatLogger {
+
+struct Combat {
+	uint64_t xuid;
+	int32_t time;
+};
+
+extern std::unordered_map<uint64_t, struct Combat> inCombat;
+
+inline std::unordered_map<uint64_t, Combat>& getInCombat(void) { return inCombat; }
+inline bool isInCombat(uint64_t xuid) { return getInCombat().count(xuid); }
+inline void clearCombatStatus(uint64_t xuid) { getInCombat().erase(xuid); }
+
+constexpr const char* dimIdToString(DimensionID d);
+bool isInCombatWith(uint64_t thisXuid, uint64_t thatXuid);
+void handleCombatDeathSequence(Player *dead, Player *killer);
+
+}
+
+namespace ChestGravestone {
+
+bool isSafeBlock(Block const &block, bool isAboveBlock);
+bool isSafeRegion(class BlockSource &region, int32_t leadX, int32_t leadY, int32_t leadZ);
+std::pair<class BlockPos, class BlockPos> tryGetSafeChestGravestonePos(class Player const &player);
+
+}
 
 DEF_LOGGER("CombatLogger");

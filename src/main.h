@@ -15,7 +15,7 @@
 #include <Packet/TextPacket.h>
 #include <Net/ServerNetworkHandler.h>
 #include <Item/ItemStack.h>
-#include <Item/CommandItem.h>
+#include <Item/ItemRegistry.h>
 #include <Item/Enchant.h>
 #include <BlockActor/BlockActor.h>
 #include <BlockActor/ChestBlockActor.h>
@@ -23,7 +23,6 @@
 #include <Block/VanillaBlocks.h>
 #include <Math/Vec3.h>
 #include <Math/BlockPos.h>
-#include <Packet/CommandRequestPacket.h>
 #include <mods/CommandSupport.h>
 
 #include <boost/scope_exit.hpp>
@@ -85,8 +84,6 @@ inline struct Settings {
 	std::string combatTimeMessage = "You are in combat for %time% more seconds!";
 	std::string endedCombatMessage = "You are no longer in combat.";
 	std::string logoutWhileInCombatMessage = "%name% logged out while in combat!";
-	std::vector<std::string> bannedCommandsVector;
-	std::string usedBannedCombatCommandMessage = "You cannot use this command while in combat!";
 
 	bool useResourcePackGlyphsInDeathMessage = false;
 	bool executeDeathCommands = true;
@@ -104,8 +101,6 @@ inline struct Settings {
 			   	f(settings.combatTimeMessage, node["combatTimeMessage"]) &&
 			   	f(settings.endedCombatMessage, node["endedCombatMessage"]) &&
 			   	f(settings.logoutWhileInCombatMessage, node["logoutWhileInCombatMessage"]) &&
-			   	f(settings.bannedCommandsVector, node["bannedCommandsInCombat"]) &&
-			   	f(settings.usedBannedCombatCommandMessage, node["usedBannedCombatCommandMessage"]) &&
 			   	f(settings.useResourcePackGlyphsInDeathMessage, node["useResourcePackGlyphsInDeathMessage"]) &&
 			   	f(settings.executeDeathCommands, node["executeDeathCommands"]) &&
 			   	f(settings.deathCommand, node["deathCommand"]) &&
@@ -123,24 +118,36 @@ struct Combat {
 	int32_t time;
 };
 
-extern std::unordered_map<uint64_t, struct Combat> inCombat;
+inline constexpr const char* HEALTH_GLYPH      = "\ue1fe"; // , glyph 0xE1FE
+inline constexpr const char* ABSORPTION_GLYPH  = "\ue1ff"; // , glyph 0xE1FF
+inline constexpr const char* HEALTH_ASCII      = "\u00a7\u0063\u2764\u00a7\u0072"; // §c❤§r
+inline constexpr const char* ABSORPTION_ASCII  = "\u00a7\u0065\u2764\u00a7\u0072"; // §e❤§r
 
-inline std::unordered_map<uint64_t, Combat>& getInCombat(void) { return inCombat; }
+inline Mod::Scheduler::Token SCHEDULER_TOKEN;
+inline std::unordered_map<uint64_t /*xuid*/, Combat> COMBAT_MAP;
+
+inline std::unordered_map<uint64_t, Combat>& getInCombat() { return COMBAT_MAP; }
 inline bool isInCombat(uint64_t xuid) { return getInCombat().count(xuid); }
 inline void clearCombatStatus(uint64_t xuid) { getInCombat().erase(xuid); }
-
-constexpr const char* dimIdToString(DimensionID d);
 bool isInCombatWith(uint64_t thisXuid, uint64_t thatXuid);
-void handleCombatDeathSequence(Player *dead, Player *killer);
+void clearCombatTokenIfNeeded();
+std::string dimIdToString(DimensionID d);
+void handleCombatDeathSequence(Player &dead, Player *killer);
+void dropPlayerInventory(Player &player);
 
-}
+} // namespace CombatLogger
 
 namespace ChestGravestone {
 
-bool isSafeBlock(Block const &block, bool isAboveBlock);
-bool isSafeRegion(class BlockSource &region, int32_t leadX, int32_t leadY, int32_t leadZ);
-std::pair<class BlockPos, class BlockPos> tryGetSafeChestGravestonePos(class Player const &player);
+bool isSafeBlock(const Block &block, bool isAboveBlock);
+bool isSafeRegion(const BlockSource &region, int32_t leadX, int32_t leadY, int32_t leadZ);
+std::pair<BlockPos, BlockPos> tryGetSafeChestGravestonePos(const Player &player);
+void transferPlayerInventoryToChest(Player &player, Container &chestContainer);
+void tryAddYAMLItemStacksToChest(Container &chestContainer);
 
-}
+} // namespace ChestGravestone
+
+#define PLAYER_DB Mod::PlayerDatabase::GetInstance()
+#define CMD_SUPPORT Mod::CommandSupport::GetInstance()
 
 DEF_LOGGER("CombatLogger");

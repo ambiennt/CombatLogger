@@ -1,5 +1,5 @@
-cmake_minimum_required (VERSION 3.8)
+cmake_minimum_required (VERSION 3.12)
 Project (CombatLogger)
 
-# Change the name
+# friendly name
 def_mod (CombatLogger LINK CommandSupport)

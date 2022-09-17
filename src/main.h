@@ -125,6 +125,7 @@ inline constexpr const char* ABSORPTION_ASCII  = "\u00a7\u0065\u2764\u00a7\u0072
 
 inline Mod::Scheduler::Token SCHEDULER_TOKEN;
 inline std::unordered_map<uint64_t /*xuid*/, Combat> COMBAT_MAP;
+inline bool IS_RUNNING = false;
 
 inline std::unordered_map<uint64_t, Combat>& getInCombat() { return COMBAT_MAP; }
 inline bool isInCombat(uint64_t xuid) { return getInCombat().count(xuid); }

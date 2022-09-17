@@ -11,10 +11,11 @@ bool CombatLogger::isInCombatWith(uint64_t thisXuid, uint64_t thatXuid) {
 }
 
 void CombatLogger::clearCombatTokenIfNeeded() {
-	if (CombatLogger::getInCombat().empty()) { // if there are no active combats
+	if (CombatLogger::getInCombat().empty() && CombatLogger::IS_RUNNING) { // if there are no active combats
 		Mod::Scheduler::SetTimeOut(Mod::Scheduler::GameTick(1), [](auto) {
 			Mod::Scheduler::ClearInterval(CombatLogger::SCHEDULER_TOKEN);
 		});
+		CombatLogger::IS_RUNNING = false;
 	}
 }
 
@@ -347,33 +348,38 @@ TInstanceHook(void, "?actuallyHurt@Player@@UEAAXHAEBVActorDamageSource@@_N@Z",
 			CombatLogger::getInCombat()[it->xuid].xuid = attacker->xuid;
 			CombatLogger::getInCombat()[it->xuid].time = settings.combatTime;
 
-			CombatLogger::SCHEDULER_TOKEN = Mod::Scheduler::SetInterval(Mod::Scheduler::GameTick(20), [](auto) {
+			if (!CombatLogger::IS_RUNNING) {
 
-				for (auto it = CombatLogger::getInCombat().begin(); it != CombatLogger::getInCombat().end();) {
+				CombatLogger::IS_RUNNING = true;
+				CombatLogger::SCHEDULER_TOKEN = Mod::Scheduler::SetInterval(Mod::Scheduler::GameTick(20), [](auto) {
+					if (CombatLogger::IS_RUNNING) {
 
-					auto currentAttackerInList = PLAYER_DB.Find(it->first);
-					if (!currentAttackerInList.has_value()) {
-						it->second.time--;
-						continue;
-					}
+						for (auto it = CombatLogger::getInCombat().begin(); it != CombatLogger::getInCombat().end();) {
 
-					if ((--it->second.time) > 0) {
-						std::string combatTimeStr = boost::replace_all_copy(settings.combatTimeMessage, "%time%", std::to_string(it->second.time));
-						auto combatTimePkt = TextPacket::createTextPacket<TextPacketType::JukeboxPopup>(combatTimeStr);
-						if (settings.combatTimeMessageEnabled) {
-							currentAttackerInList->player->sendNetworkPacket(combatTimePkt);
+							auto currentAttackerInList = PLAYER_DB.Find(it->first);
+							if (!currentAttackerInList.has_value()) {
+								it->second.time--;
+								continue;
+							}
+
+							if ((--it->second.time) > 0) {
+								std::string combatTimeStr = boost::replace_all_copy(settings.combatTimeMessage, "%time%", std::to_string(it->second.time));
+								auto combatTimePkt = TextPacket::createTextPacket<TextPacketType::JukeboxPopup>(combatTimeStr);
+								if (settings.combatTimeMessageEnabled) {
+									currentAttackerInList->player->sendNetworkPacket(combatTimePkt);
+								}
+								++it;
+							}
+							else {
+								auto combatEndPkt = TextPacket::createTextPacket<TextPacketType::JukeboxPopup>(settings.endedCombatMessage);
+								currentAttackerInList->player->sendNetworkPacket(combatEndPkt);
+								it = CombatLogger::getInCombat().erase(it);
+							}
 						}
-						++it;
+						CombatLogger::clearCombatTokenIfNeeded();
 					}
-					else {
-						auto combatEndPkt = TextPacket::createTextPacket<TextPacketType::JukeboxPopup>(settings.endedCombatMessage);
-						currentAttackerInList->player->sendNetworkPacket(combatEndPkt);
-						it = CombatLogger::getInCombat().erase(it);
-					}
-				}
-
-				CombatLogger::clearCombatTokenIfNeeded();
-			});
+				});
+			}
 		}
 	}
 }
